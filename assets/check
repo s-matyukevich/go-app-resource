@@ -1,0 +1,39 @@
+#!/bin/bash
+# vim: set ft=sh
+
+set -e
+
+exec 1>&2 # redirect all output to stderr for logging
+
+payload=$TMPDIR/go-app-resource-request
+
+package=$(jq -r '.source.package // ""' < $payload)
+cmd=$(jq -r '.source.cmd // ""' < $payload)
+out=$(jq -r '.source.out // ""' < $payload)
+current_version=$(jq -r '.version.ref // ""' < $payload)
+
+if [ -z "$package" ]; then
+  echo "must specify package"
+  exit 1
+fi
+
+if [ -z "$cmd" ]; then
+  cmd="go install ."
+fi
+
+if [ -z "$out" ]; then
+  binary=$(basename $package)
+  out="$GOPATH/bin/$binary"
+fi
+
+mkdir -p $GOPATH/src/$package
+[ "$(ls -A $GOPATH/src/$package)" ] || git clone https://$package $GOPATH/src/$package
+cd $GOPATH/src/$package
+git pull
+
+
+if [ -z "$current_version" ]; then
+  git --no-pager  log --pretty=format:"%h"  | jq -R '.' | jq -s "map({ref: .})"
+else
+  git --no-pager log --pretty=format:"%h"  $current_version..HEAD  | jq -R '.' | jq -s "map({ref: .})"
+fi
